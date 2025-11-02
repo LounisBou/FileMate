@@ -106,19 +106,61 @@ def parse_args() -> argparse.Namespace:
     """
 
     args_parser = argparse.ArgumentParser(
-        description="YouTube Trailer Scraper - Download trailers for movies and TV shows from YouTube"
+        description="FileMate - A file management tool for sorting and organizing media files"
+    )
+    # Positional argument
+    args_parser.add_argument(
+        "path",
+        type=str,
+        help="Path to the filesystem node to process"
+    )
+    # Sort flag
+    args_parser.add_argument(
+        "--sort",
+        action="store_true",
+        required=False,
+        help="Sort the directory"
+    )
+    # Tree flag
+    args_parser.add_argument(
+        "--tree",
+        action="store_true",
+        required=False,
+        help="Build the tree of the directory"
+    )
+    # Show tree flag
+    args_parser.add_argument(
+        "--show-tree",
+        action="store_true",
+        required=False,
+        help="Show the tree of the directory"
+    )
+    # Clean flag
+    args_parser.add_argument(
+        "--clean",
+        action="store_true",
+        required=False,
+        help="Delete remaining elements of a sorted directory"
     )
     # Verbose flag
     args_parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Enable verbose output",
+        required=False,
+        help="Verbose output"
     )
-    # Use SMB mount point
+    # Dry run flag
     args_parser.add_argument(
-        "--use-smb",
+        "--dry-run",
         action="store_true",
-        help="Use SMB mount point for media directories",
+        required=False,
+        help="Dry run"
+    )
+    # Version flag
+    args_parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s 1.0"
     )
     return args_parser.parse_args()
 
@@ -135,8 +177,21 @@ def check_args(args: argparse.Namespace) -> argparse.Namespace:
     """
 
     # Required arguments validation
+    from pathlib import Path
+
+    # Validate path exists
+    path = Path(args.path)
+    if not path.exists():
+        raise ValueError(f"Path does not exist: {args.path}")
+
+    # Convert path string to Path object
+    args.path = path
 
     # Optional arguments validation
+    # Ensure show-tree is only used with tree
+    if args.show_tree and not args.tree:
+        print_message("Warning: --show-tree requires --tree flag, enabling --tree", WARNING)
+        args.tree = True
 
     return args
 

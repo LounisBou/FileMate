@@ -1,11 +1,11 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import argparse
 from pathlib import Path
 
 from pymate import LogIt
 
+from commandlinehelper import parse_args, check_args, set_default_args_values
 from filemate.file_system_node_factory import FileSystemNodeFactory
 from filemate.file_system_node_tree import FileSystemNodeTree
 from filemate.sorter import Sorter
@@ -15,30 +15,17 @@ def main() -> None:
     """
     Entry point for the FileMate application.
     """
-    
-    # Create the parser
-    parser = argparse.ArgumentParser(description='FileMate - A file management tool.')
-    parser.add_argument('path', type=Path, help='Path to the fileSystem node to process')
-    parser.add_argument('--sort', action='store_true', required=False, help='Sort the directory')
-    parser.add_argument('--tree', action='store_true', required=False, help='Build the tree of the directory')
-    parser.add_argument('--show-tree', action='store_true', required=False, help='Show the tree of the directory')
-    parser.add_argument('--clean', action='store_true', required=False, help='Delete remaining elements of a sorted directory')
-    parser.add_argument('--verbose', action='store_true', required=False, help='Verbose output')
-    parser.add_argument('--dry-run', action='store_true', required=False, help='Dry run')
-    parser.add_argument('--version', action='version', version='%(prog)s 1.0')
-    
-    # Parse the arguments
-    args = parser.parse_args()
+
+    # Parse and validate arguments
+    args = parse_args()
+    args = check_args(args)
+    args = set_default_args_values(args)
     
     # Get the logger
     logger = LogIt(console=True, format='%(message)s')
-    
-    # Node path
-    node_path = args.path
-    # Path
-    path = Path(node_path)
-    # Node
-    node = FileSystemNodeFactory.create_node(path)
+
+    # Create node from validated path
+    node = FileSystemNodeFactory.create_node(args.path)
     
     # Check if tree is requested
     if args.tree:
