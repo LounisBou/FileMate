@@ -1,0 +1,111 @@
+#############################
+# Build configuration (PEP 517)
+#############################
+[build-system]
+requires = [
+    "setuptools>=68",
+    "wheel",
+    # Uncomment if you switch to setuptools-scm for versioning
+    # "setuptools-scm>=8",
+]
+build-backend = "setuptools.build_meta"
+
+
+#############################
+# Project metadata (PEP 621)
+#############################
+[project]
+name = "youtubetrailerscraper"
+version = "0.1.0"  # Consider setuptools-scm for automatic versions
+description = "Scan tvshows and movies folders, download trailer on youtube"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "LounisBou", email = "lounis.bou@gmail.com" }
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  # Runtime dependencies (keep empty for template)
+]
+
+[project.urls]
+Homepage = "https://github.com/LounisBou/youtubetrailerscraper"
+
+# Example console script (requires a __main__.py with main())
+# [project.scripts]
+# youtubetrailerscraper = "youtubetrailerscraper.__main__:main"
+
+
+#############################
+# Setuptools configuration for src/ layout
+#############################
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
+#############################
+# Tooling configuration
+#############################
+
+# Black code formatter
+[tool.black]
+line-length = 99 # https://peps.python.org/pep-0008/#maximum-line-length
+target-version = ["py38", "py39", "py310", "py311"]
+exclude = '''
+(
+  /(
+      \.git
+    | \.venv
+    | build
+    | dist
+    | \.mypy_cache
+    | \.pytest_cache
+  )/
+)
+'''
+
+# isort to sort imports (compatible with black)
+[tool.isort]
+profile = "black"
+line_length = 99 # https://peps.python.org/pep-0008/#maximum-line-length
+known_first_party = ["youtubetrailerscraper"]
+known_third_party = [
+    # Add your third-party dependencies here
+]
+combine_as_imports = true
+
+# mypy static type checker
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+ignore_missing_imports = true  # third‑party libs may lack stubs
+show_error_context = true
+pretty = true
+
+# pytest configuration can also live in pyproject.toml, but we use pytest.ini
+# If you prefer centralization, move pytest.ini settings under this table:
+# [tool.pytest.ini_options]
+# addopts = "-ra"
+# filterwarnings = [
+#   "ignore:.*audioop.*is deprecated.*:DeprecationWarning:pydub.utils",
+# ]
+
+# Pylint supports pyproject in recent versions. Example (optional):
+# [tool.pylint."MESSAGES CONTROL"]
+# disable = ["C0114", "C0115", "C0116"]

@@ -1,0 +1,17 @@
+# Runtime dependencies
+
+
+# Test / Dev tools (optional for CI)
+pytest
+pytest-cov
+black
+isort
+mypy
+pylint
+termcolor
+flake8
+flake8-bugbear
+
+# Documentation (optional)
+sphinx
+sphinx-rtd-theme
