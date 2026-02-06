@@ -1,5 +1,4 @@
-#!/usr/bin/env python 
-# -*- coding: utf-8 -*-
+"""Hierarchical tree representation of a filesystem structure."""
 
 import json
 import time
@@ -17,82 +16,98 @@ from filemate.file_system_node import FileSystemNode
 
 
 @dataclass
-class FileSystemNodeTree():
-    
+class FileSystemNodeTree:
+    """A hierarchical tree of filesystem nodes backed by bigtree.
+
+    Attributes:
+        nodetree_folder_name: Default folder name for persisted trees.
+        redis_config: Default Redis connection parameters.
+        root_node: The root Directory node.
+        verbose: If True, emit extra log output.
+        root_tree_node: The root bigtree TreeNode.
+        logger: Logger instance.
+        saveit: SaveIt instance for persistence (may be None if Redis unavailable).
     """
-    A class to hierarchical tree of file system nodes.
-    """
-    
-    # Attributes & initialization
-    
+
     nodetree_folder_name: ClassVar[str] = "__nodetree__"
     redis_config: ClassVar[dict] = {"host": "localhost", "port": 6379, "db": 0}
-    
-    root_node: FileSystemNode = field(init=True, metadata={"help": "The root node to sort."})
-    verbose: bool = field(init=True, default=False, metadata={"help": "Verbose output."})
-    root_tree_node: TreeNode = field(init=False, default=None, metadata={"help": "The root tree node."})
-    logger: LogIt = field(init=True, default_factory=LogIt, metadata={"help": "The logger."})
-    saveit: SaveIt = field(init=False, default_factory=SaveIt, metadata={"help": "The SaveIt instance."})
-    
+
+    root_node: FileSystemNode = field(init=True)
+    verbose: bool = field(init=True, default=False)
+    root_tree_node: TreeNode = field(init=False, default=None)
+    logger: LogIt = field(init=True, default_factory=LogIt)
+    saveit: SaveIt = field(init=False, default=None)
+
     def __post_init__(self) -> None:
+        """Validate root node and initialize SaveIt.
+
+        Raises:
+            ValueError: If the root node is not a Directory.
         """
-        Initializes the file system node tree.
-        """
-        # Check if the root node is a directory
         if not self.root_node.is_instance(Directory):
             raise ValueError(f"The root node {self.root_node} is not a directory.")
-        # Create an instance of saveit
-        self.saveit = SaveIt(backend='redis', redis_config=FileSystemNodeTree.redis_config)
-    
-    # Private methods
-    
+        try:
+            self.saveit = SaveIt(
+                backend="redis",
+                redis_config=FileSystemNodeTree.redis_config,
+            )
+        except Exception:
+            self.saveit = None
+
+    # -- Build --
+
     @TimeIt
     def __build_tree(self) -> None:
-        """
-        Builds the tree of file system nodes.
-        """
+        """Build the complete tree starting from root_node."""
         self.root_tree_node = FileSystemNodeTree.create_node(self.root_node)
         self.__build_tree_recursive(self.root_node, self.root_tree_node)
-    
-    @CacheIt(max_duration=3600, backend='redis', redis_config=redis_config)
-    def __build_tree_recursive(self, node: Directory, tree_node: TreeNode) -> None:
+
+    @CacheIt(max_duration=3600, backend="redis", redis_config=redis_config)
+    def __build_tree_recursive(
+        self, node: Directory, tree_node: TreeNode
+    ) -> None:
+        """Recursively build tree nodes for all children.
+
+        Args:
+            node: The filesystem Directory to recurse into.
+            tree_node: The parent bigtree TreeNode.
         """
-        Builds the tree of file system nodes recursively.
-        :param node: The file system node.
-        :param tree_node: The tree node.
-        """
-        # Iterate over the node's children
         for child_node in node.iter(recursive=False, hidden=False):
             try:
-                # Create tree node
-                child_tree_node = FileSystemNodeTree.create_node(child_node, parent=tree_node)
+                child_tree_node = FileSystemNodeTree.create_node(
+                    child_node, parent=tree_node
+                )
                 if child_node.is_instance(Directory):
                     self.__build_tree_recursive(child_node, child_tree_node)
-            except (OSError, AttributeError) as e:
-                self.logger.info(colored(f"Skipping node {child_node.path.name} due to error: {e}"), "yellow")
-                
+            except PermissionError as e:
+                self.logger.info(
+                    colored(
+                        f"Skipping node {child_node.path.name} due to error: {e}",
+                        "yellow",
+                    )
+                )
+
     def __str__(self) -> str:
-        """
-        Returns a string representation of the file system node tree.
-        :return: A string representation of the file system node tree.
-        """
+        """Return a string summary."""
         return f"File System Node Tree: {self.root_node.path}"
-        
-    # Public methods
-    
-    # - Build tree
-    
+
+    # -- Public: Build --
+
     def build(self) -> None:
-        """
-        Builds the tree of file system nodes.
-        """
+        """Build the tree of filesystem nodes."""
         self.__build_tree()
-    
-    # - Add & Remove nodes
-    
+
+    # -- Public: Add & Remove --
+
     def add_node(self, parent_path: Path, child_node: FileSystemNode) -> None:
-        """
-        Adds a new node to the tree under the specified parent path.
+        """Add a new node to the tree under *parent_path*.
+
+        Args:
+            parent_path: Path of the parent node in the tree.
+            child_node: The filesystem node to add.
+
+        Raises:
+            ValueError: If *parent_path* is not found in the tree.
         """
         parent_tree_node = self.search_node_by_path(parent_path)
         if parent_tree_node is None:
@@ -100,181 +115,223 @@ class FileSystemNodeTree():
         FileSystemNodeTree.create_node(child_node, parent=parent_tree_node)
 
     def remove_node(self, path: Path) -> None:
-        """
-        Removes a node from the tree by its path.
+        """Remove a node from the tree by path.
+
+        Args:
+            path: Path of the node to remove.
+
+        Raises:
+            ValueError: If *path* is not found in the tree.
         """
         node_to_remove = self.search_node_by_path(path)
         if node_to_remove is None:
             raise ValueError(f"Path {path} not found in the tree.")
-        node_to_remove.parent = None  # Detach the node from its parent
-    
-    # - Display
-    
+        node_to_remove.parent = None
+
+    # -- Public: Display --
+
     def show(self) -> None:
-        """
-        Displays the file system tree using bigtree's print_tree function.
-        """
+        """Print the tree to stdout."""
         print_tree(self.root_tree_node)
-        
-    # - Export & Import
-    
+
+    # -- Public: Export & Import --
+
     def tree_to_dict(self) -> dict:
-        """
-        Converts the tree structure into a dictionary.
-        :return: Dictionary representation of the tree.
+        """Convert the tree to a dictionary.
+
+        Returns:
+            Dictionary representation of the tree.
         """
         return tree_to_dict(self.root_tree_node)
-       
+
     @staticmethod
     def dict_to_tree(data: dict) -> TreeNode:
-        """
-        Recursively converts a dictionary into a TreeNode.
-        :param data: Dictionary representation of the node.
-        :return: The TreeNode instance.
+        """Convert a dictionary back to a TreeNode.
+
+        Args:
+            data: Dictionary representation.
+
+        Returns:
+            The root TreeNode.
         """
         return dict_to_tree(data)
 
     def json(self, indent: int = 4) -> str:
-        """
-        Transforms the tree to a JSON string.
-        :param indent: The number of spaces to indent the JSON string.
-        :return: A JSON string representing the hierarchical structure
+        """Serialize the tree as a JSON string.
+
+        Args:
+            indent: Number of spaces for indentation.
+
+        Returns:
+            JSON string.
         """
         return json.dumps(self.tree_to_dict(), indent=indent)
-    
+
     def export(self, file_path: str, indent: int = 4) -> None:
-        """
-        Exports the tree to a JSON file.
-        :param file_path: Path to save the tree.
+        """Export the tree to a JSON file.
+
+        Args:
+            file_path: Path to save the file.
+            indent: Number of spaces for indentation.
         """
         with open(file_path, "w", encoding="utf-8") as f:
-            json_data = self.json(indent=indent)
-            f.write(json_data)
-    
+            f.write(self.json(indent=indent))
+
     @staticmethod
-    def importer(file_path: str) -> 'FileSystemNodeTree':
-        """
-        Imports the tree from a JSON file.
-        :param file_path: Path to the JSON file.
-        :return: An instance of FileSystemNodeTree.
+    def importer(file_path: str) -> "FileSystemNodeTree":
+        """Import a tree from a JSON file.
+
+        Args:
+            file_path: Path to the JSON file.
+
+        Returns:
+            A TreeNode reconstructed from the file.
         """
         with open(file_path, "r", encoding="utf-8") as f:
             tree_data = json.load(f)
-        
         return FileSystemNodeTree.dict_to_tree(tree_data)
-    
-    # - Search methods
-    
-    def search_node_by_name(self, name: str) -> TreeNode|None:
+
+    # -- Public: Search --
+
+    def search_node_by_name(self, name: str) -> TreeNode | None:
+        """Find a node in the tree by name.
+
+        Args:
+            name: The node name to search for.
+
+        Returns:
+            The matching TreeNode, or None.
         """
-        Searches for a node in the tree by name.
-        
-        :param name: Name of the node to search for.
-        :return: The matching TreeNode if found, None otherwise.
-        """
-        # Traverse the tree to find a node by name
-        def _find_by_name(node, name):
-            if node.name == name:
+
+        def _find_by_name(node, target):
+            if node.name == target:
                 return node
             for child in getattr(node, "children", []):
-                result = _find_by_name(child, name)
+                result = _find_by_name(child, target)
                 if result is not None:
                     return result
             return None
+
         return _find_by_name(self.root_tree_node, name)
-    
+
     def search_node_by_path(self, path: Path) -> TreeNode | None:
-        """
-        Searches for a node in the tree by its absolute or relative path.
+        """Find a node in the tree by absolute or relative path.
 
-        :param path: Path of the node to search for.
-        :return: The matching TreeNode if found, None otherwise.
+        Computes the path relative to the tree root before searching,
+        so absolute paths work correctly.
+
+        Args:
+            path: Path to search for.
+
+        Returns:
+            The matching TreeNode, or None.
         """
-        
-        # Normalize the path and split it into parts
-        normalized_path = Path(path).resolve().parts
+        resolved = Path(path).resolve()
+        root_path = self.root_node.path
+
+        # If the path is the root itself, return root
+        if resolved == root_path:
+            return self.root_tree_node
+
+        # Try to compute relative path from the root
+        try:
+            relative = resolved.relative_to(root_path)
+        except ValueError:
+            return None  # path is outside the tree
+
         current_node = self.root_tree_node
-
-        # Split the path into parts and search hierarchically
-        for part in normalized_path:
+        for part in relative.parts:
             current_node = next(
                 (child for child in current_node.children if child.name == part),
-                None
+                None,
             )
             if current_node is None:
-                return None  # Node not found
+                return None
 
         return current_node
-    
-    # - Utility methods
-    
+
+    # -- Public: Save / Restore --
+
     @TimeIt
     def save(self) -> None:
-        """
-        Saves the tree to a JSON file in nodetree folder.
-        """
-        # Check if the nodetree folder exists
+        """Save the tree to a JSON file in the nodetree folder."""
         nodetree_folder = Path(FileSystemNodeTree.nodetree_folder_name)
         if not nodetree_folder.exists():
             nodetree_folder.mkdir()
-        # Check if the tree has been saved
         if FileSystemNodeTree.check_saved_tree(self.root_node.name):
-            # Remove the existing saved tree
             (nodetree_folder / f"{self.root_node.name}.json").unlink()
-        # Export the tree to a JSON file
-        self.export(f"{FileSystemNodeTree.nodetree_folder_name}/{self.root_node.name}.json")
+        self.export(
+            f"{FileSystemNodeTree.nodetree_folder_name}/{self.root_node.name}.json"
+        )
 
     @staticmethod
     @TimeIt
-    def restore(node_name: str) -> 'FileSystemNodeTree':
+    def restore(node_name: str) -> "FileSystemNodeTree":
+        """Restore a tree from a previously saved JSON file.
+
+        Args:
+            node_name: Name of the root node.
+
+        Returns:
+            The restored TreeNode.
+
+        Raises:
+            FileNotFoundError: If no saved tree is found.
         """
-        Restores the tree from a JSON file in nodetree folder.
-        :param node_name: Name of the node.
-        :return: An instance of FileSystemNodeTree.
-        """
-        # Check if the tree has been saved
         if not FileSystemNodeTree.check_saved_tree(node_name):
             raise FileNotFoundError("No saved tree found.")
-        return FileSystemNodeTree.importer(f"{FileSystemNodeTree.nodetree_folder_name}/{node_name}.json")
-    
+        return FileSystemNodeTree.importer(
+            f"{FileSystemNodeTree.nodetree_folder_name}/{node_name}.json"
+        )
+
     @staticmethod
-    def check_saved_tree(node_name: str, max_age: int|None = None) -> bool:
+    def check_saved_tree(node_name: str, max_age: int | None = None) -> bool:
+        """Check if a saved tree file exists (and optionally is recent enough).
+
+        Args:
+            node_name: Name of the root node.
+            max_age: Maximum age in seconds. None to ignore.
+
+        Returns:
+            True if a valid saved tree exists.
         """
-        Checks if the tree has been saved.
-        :param node_name: Name of the node.
-        :param max_age: Maximum age in seconds for the saved tree. None to ignore.
-        :return: True if the tree has been saved, False otherwise.
-        """
-        # Check if max_age is set
         if max_age is not None:
-            # Check if the saved tree exists and is not older than max_age
-            nodetree_path = Path(f"{FileSystemNodeTree.nodetree_folder_name}/{node_name}.json")
+            nodetree_path = Path(
+                f"{FileSystemNodeTree.nodetree_folder_name}/{node_name}.json"
+            )
             if nodetree_path.exists():
                 return (time.time() - nodetree_path.stat().st_mtime) < max_age
             return False
-        return Path(f"{FileSystemNodeTree.nodetree_folder_name}/{node_name}.json").exists()
-    
+        return Path(
+            f"{FileSystemNodeTree.nodetree_folder_name}/{node_name}.json"
+        ).exists()
+
+    # -- Static utility --
+
     @staticmethod
-    def create_node(node: FileSystemNode, parent: TreeNode = None) -> TreeNode:
-        """
-        Creates a new TreeNode instance.
-        :param node: File system node to create a TreeNode from.
-        :param parent: Parent TreeNode.
-        :return: The created TreeNode
+    def create_node(
+        node: FileSystemNode, parent: TreeNode = None
+    ) -> TreeNode:
+        """Create a bigtree TreeNode from a FileSystemNode.
+
+        Args:
+            node: The filesystem node.
+            parent: Optional parent TreeNode.
+
+        Returns:
+            The created TreeNode.
         """
         return TreeNode(
-            node.path.name, 
+            node.path.name,
             parent=parent,
             size=node.get_size(),
-            type=node.get_type()
+            type=node.get_type(),
         )
-    
+
     def children(self) -> list[TreeNode]:
-        """
-        Checks if a node is the root of the tree.
-        :param node: The node to check.
-        :return: True if the node is the root, False otherwise.
+        """Return the children of the root tree node.
+
+        Returns:
+            List of child TreeNodes.
         """
         return self.root_tree_node.children
-    
-    

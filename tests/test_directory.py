@@ -109,12 +109,12 @@ def test_directory_truediv(tmp_path, env_setup):
     assert result.name == "child.txt"
 
 
-def test_directory_mod_mkdir(tmp_path, env_setup):
-    """dir % 'sub' creates a subdirectory."""
+def test_directory_mkdir(tmp_path, env_setup):
+    """dir.mkdir('sub') creates a subdirectory."""
     d = tmp_path / "parent_mod"
     d.mkdir()
     node = Directory(d)
-    sub = node % "newsub"
+    sub = node.mkdir("newsub")
     assert isinstance(sub, Directory)
     assert sub.path.exists()
     assert sub.name == "newsub"
@@ -230,65 +230,55 @@ def test_directory_delitem_missing(tmp_path, env_setup):
         del node["nonexistent.txt"]
 
 
-def test_directory_pow_merge(tmp_path, env_setup):
-    """__pow__: dir1 ** dir2 merges dir2 into dir1."""
-    d1 = tmp_path / "pow_dir1"
+def test_directory_merge(tmp_path, env_setup):
+    """merge() moves contents from other dir into this one."""
+    d1 = tmp_path / "merge_dir1"
     d1.mkdir()
     (d1 / "existing.txt").write_text("a", encoding="utf-8")
-    d2 = tmp_path / "pow_dir2"
+    d2 = tmp_path / "merge_dir2"
     d2.mkdir()
     (d2 / "incoming.txt").write_text("b", encoding="utf-8")
     node1 = Directory(d1)
     node2 = Directory(d2)
-    result = node1 ** node2
+    result = node1.merge(node2)
     assert isinstance(result, Directory)
     assert (d1 / "incoming.txt").exists()
     assert not d2.exists()
 
 
-def test_directory_and_intersection(tmp_path, env_setup):
-    """__and__: dir1 & dir2 returns intersection."""
-    d1 = tmp_path / "and_dir1"
+def test_directory_intersection(tmp_path, env_setup):
+    """intersection() returns nodes present in both directories."""
+    d1 = tmp_path / "int_dir1"
     d1.mkdir()
     (d1 / "shared.txt").write_text("a", encoding="utf-8")
     (d1 / "only_d1.txt").write_text("b", encoding="utf-8")
-    d2 = tmp_path / "and_dir2"
+    d2 = tmp_path / "int_dir2"
     d2.mkdir()
     (d2 / "shared.txt").write_text("c", encoding="utf-8")
     (d2 / "only_d2.txt").write_text("d", encoding="utf-8")
     node1 = Directory(d1)
     node2 = Directory(d2)
-    result = node1 & node2
+    result = node1.intersection(node2)
     assert isinstance(result, set)
     names = {n.name for n in result}
     assert "shared.txt" in names
 
 
-def test_directory_or_union(tmp_path, env_setup):
-    """__or__: dir1 | dir2 returns union."""
-    d1 = tmp_path / "or_dir1"
+def test_directory_union(tmp_path, env_setup):
+    """union() returns all nodes from both directories."""
+    d1 = tmp_path / "union_dir1"
     d1.mkdir()
     (d1 / "a.txt").write_text("a", encoding="utf-8")
-    d2 = tmp_path / "or_dir2"
+    d2 = tmp_path / "union_dir2"
     d2.mkdir()
     (d2 / "b.txt").write_text("b", encoding="utf-8")
     node1 = Directory(d1)
     node2 = Directory(d2)
-    result = node1 | node2
+    result = node1.union(node2)
     assert isinstance(result, set)
     names = {n.name for n in result}
     assert "a.txt" in names
     assert "b.txt" in names
-
-
-def test_directory_invert(tmp_path, env_setup):
-    """__invert__: ~dir returns empty set (XOR with itself)."""
-    d = tmp_path / "inv_dir"
-    d.mkdir()
-    (d / "file.txt").write_text("x", encoding="utf-8")
-    node = Directory(d)
-    result = ~node
-    assert result == set()
 
 
 # -- Iteration edge cases --

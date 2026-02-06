@@ -62,6 +62,36 @@ def test_search_node_by_name_miss(tree_setup):
     assert result is None
 
 
+def test_search_node_by_path_hit(tree_setup):
+    """search_node_by_path finds a node using an absolute path."""
+    root_path = tree_setup.root_node.path
+    result = tree_setup.search_node_by_path(root_path / "file_a.txt")
+    assert result is not None
+    assert result.name == "file_a.txt"
+
+
+def test_search_node_by_path_nested(tree_setup):
+    """search_node_by_path finds a nested node."""
+    root_path = tree_setup.root_node.path
+    result = tree_setup.search_node_by_path(root_path / "subdir" / "nested.txt")
+    assert result is not None
+    assert result.name == "nested.txt"
+
+
+def test_search_node_by_path_root(tree_setup):
+    """search_node_by_path returns root when given root path."""
+    root_path = tree_setup.root_node.path
+    result = tree_setup.search_node_by_path(root_path)
+    assert result is not None
+    assert result.name == "tree_root"
+
+
+def test_search_node_by_path_outside_tree(tree_setup):
+    """search_node_by_path returns None for path outside the tree."""
+    result = tree_setup.search_node_by_path(Path("/some/other/location"))
+    assert result is None
+
+
 def test_search_node_by_path_miss(tree_setup):
     """search_node_by_path returns None for path not in tree."""
     result = tree_setup.search_node_by_path(Path("/nonexistent/path"))

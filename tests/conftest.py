@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fixtures and configuration for pytest."""
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from filemate.file_system_node import FileSystemNode
 from filemate.node_name_cleaner import NodeNameCleaner
 
 
@@ -20,6 +19,19 @@ def env_setup(monkeypatch, project_root):
     """Set env vars pointing to the real cleaning config files."""
     monkeypatch.setenv("CLEAN_CHARACTERS_FILE", "clean_chars.txt")
     monkeypatch.setenv("CLEAN_WORDS_FILE", "clean_words.txt")
+
+
+@pytest.fixture(autouse=True)
+def setup_cleaner(env_setup):
+    """Set the shared NodeNameCleaner for all tests (autouse).
+
+    Creates a NodeNameCleaner using the env vars and installs it as the
+    shared cleaner on FileSystemNode. Resets after the test.
+    """
+    cleaner = NodeNameCleaner()
+    FileSystemNode.set_name_cleaner(cleaner)
+    yield cleaner
+    FileSystemNode._shared_cleaner = None
 
 
 @pytest.fixture()
@@ -56,9 +68,9 @@ def sample_dir(tmp_path, env_setup):
 
 
 @pytest.fixture()
-def name_cleaner(env_setup):
-    """Return a NodeNameCleaner instance."""
-    return NodeNameCleaner()
+def name_cleaner(setup_cleaner):
+    """Return the shared NodeNameCleaner instance."""
+    return setup_cleaner
 
 
 def _noop_cache_decorator(*args, **kwargs):

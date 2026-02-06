@@ -1,5 +1,4 @@
-#!/usr/bin/env python 
-# -*- coding: utf-8 -*-
+"""Directory node implementation."""
 
 import os
 import shutil
@@ -16,162 +15,158 @@ from filemate.file_type_extensions import FileTypeExtensions
 
 @dataclass(eq=False)
 class Directory(FileSystemNode):
+    """A filesystem node representing a directory.
 
-    """ A class to represent a directory. """
+    Attributes:
+        year: Year extracted from the directory name, or 0.
+        recursive: If True, iteration includes subdirectory contents.
+    """
 
-    # Attributes specific to the directory
+    year: int | None = field(init=False, default=0)
+    recursive: bool = field(init=False, default=False)
 
-    year: int|None = field(init=False, default=0, metadata="The year in the directory name.")
-    recursive: bool = field(init=False, default=False, metadata="If True, includes contents of subdirectories.")
-
-    # Special methods
-    
-    # - Initialization and deletion
+    # -- Initialization --
 
     def __post_init__(self) -> None:
+        """Initialize directory-specific attributes.
+
+        Raises:
+            ValueError: If the path is not a directory.
         """
-        Initializes the directory attributes.
-        """
-        # Superclass initialization
         super().__post_init__()
-        # Ensure node is a directory
         if not self.path.is_dir():
             raise ValueError(f"The path {self.path} is not a directory.")
-        # Stem is the name without year in parentheses
-        self.stem = self.name.split(' (', maxsplit=1)[0]
-        # Year is the year in parentheses if it exists at the end of the name and is a 4-digit number else 0
+        self.stem = self.name.split(" (", maxsplit=1)[0]
         self.year = self.name_cleaner.get_year_from_node_name(self.name)
-    
-    # - String representation
-    
-    def __str__(self) -> str:
-        """
-        Returns a string representation of the directory.
-        Examples: str(dir) returns a string representation of the directory.
-        :return: A string representation of the directory.
-        """
-        return f"Directory: {self.path.name}"
-    
-    def __repr__(self) -> str:
-        """
-        Returns a string representation of the directory.
-        Examples: repr(dir) returns a string representation of the directory.
-        :return: A string representation of the directory.
-        """
-        return (f"Directory: {self.path}\n"
-                f"Name: {self.name}\n"
-                f"Name Cleaned: {self.name_cleaned}\n"
-                f"Stem: {self.stem}\n"
-                f"Stem Cleaned: {self.stem_cleaned}\n"
-                f"Year: {self.year}\n"
-                f"Size: {self.human_readable_size()}\n"
-                f"Items: {self.count()}\n"
-                f"  - Files: {self.count_files()}\n"
-                f"  - Subdirectories: {self.count_dirs()}\n"
-                f"Recursive: {self.recursive}\n"
-                f"Last Modified: {self.formatted_modification_time()}\n"
-                f"Type: {self.get_type()}")
 
-    # - Iteration and containment
-    
+    # -- String representation --
+
+    def __str__(self) -> str:
+        """Return ``'Directory: <name>'``."""
+        return f"Directory: {self.path.name}"
+
+    def __repr__(self) -> str:
+        """Return a multi-line detail string."""
+        return (
+            f"Directory: {self.path}\n"
+            f"Name: {self.name}\n"
+            f"Name Cleaned: {self.name_cleaned}\n"
+            f"Stem: {self.stem}\n"
+            f"Stem Cleaned: {self.stem_cleaned}\n"
+            f"Year: {self.year}\n"
+            f"Size: {self.human_readable_size()}\n"
+            f"Items: {self.count()}\n"
+            f"  - Files: {self.count_files()}\n"
+            f"  - Subdirectories: {self.count_dirs()}\n"
+            f"Recursive: {self.recursive}\n"
+            f"Last Modified: {self.formatted_modification_time()}\n"
+            f"Type: {self.get_type()}"
+        )
+
+    # -- Iteration and containment --
+
     def __iter__(self) -> Iterator[FileSystemNode]:
-        """
-        Returns an iterator over the contents of the directory.
-        Example: iter(dir) returns an iterator over the nodes of the directory.
+        """Iterate over directory contents.
+
+        Returns:
+            Iterator of FileSystemNode instances.
         """
         return self.iter(recursive=self.recursive)
-    
-    def __next__(self) -> FileSystemNode:
-        """
-        Returns the next node in the directory.
-        Example: next(dir) returns the next node in the directory.
-        """
-        return next(self.iter(recursive=self.recursive))
-    
-    def __contains__(self, node: FileSystemNode) -> bool:
-        """
-        Checks if a node is in the directory.
-        Example: file in dir checks if the file is in the directory.
-        :param node: The node to check.
-        :return: True if the node is in the directory, False otherwise.
-        """
-        # Get the target name
-        target_name = node.path.name
 
-        # Check if item is in the current directory
+    def __next__(self) -> FileSystemNode:
+        """Return the next node in the directory."""
+        return next(self.iter(recursive=self.recursive))
+
+    def __contains__(self, node: FileSystemNode) -> bool:
+        """Check whether *node* is in this directory.
+
+        Args:
+            node: The node to look for.
+
+        Returns:
+            True if found.
+        """
+        target_name = node.path.name
         with os.scandir(self.path) as entries:
             for entry in entries:
                 if entry.name == target_name:
                     return True
-
-        # If recursive is True, check subdirectories
-        if getattr(self, 'recursive', False):  # Check if the `recursive` attribute exists and is True
+        if getattr(self, "recursive", False):
             for _, dirs, files in os.walk(self.path):
                 if target_name in files or target_name in dirs:
                     return True
-
         return False
-    
+
     def __getitem__(self, search: str) -> FileSystemNode:
-        """
-        Gets an item from the directory by name or hash.
-        Example: dir['file.txt'] gets the file 'file.txt' from the directory.
-        :param search: The name or hash of the item to get.
-        :return: The node in the directory.
+        """Get a child node by name.
+
+        Args:
+            search: Filename or hash to look up.
+
+        Returns:
+            The matching FileSystemNode.
+
+        Raises:
+            KeyError: If no match is found.
         """
         for node in self.iter(recursive=self.recursive):
             if node.name == search or hash(node) == search:
                 return node
         raise KeyError(f"No node {search} in the directory {self.path}")
-    
+
     def __setitem__(self, search: str, new_node: FileSystemNode) -> None:
-        """
-        Replaces an node in the directory.
-        Example: dir['file.txt'] = new_file replaces the file 'file.txt' with new_file in the directory
-        :param search: The name or hash of the node to replace.
-        :param new_node: The new node to replace the old node
+        """Replace a child node by name.
+
+        Args:
+            search: Filename or hash to look up.
+            new_node: The replacement node.
+
+        Raises:
+            KeyError: If no match is found.
         """
         for node in self.iter(recursive=self.recursive):
             if node.name == search or hash(node) == search:
                 node.move(new_node.path)
                 return
         raise KeyError(f"No node {search} in the directory {self.path}")
-    
+
     def __delitem__(self, search: str) -> None:
-        """
-        Deletes an node from the directory.
-        Example: del dir['file.txt'] deletes the file 'file.txt' from the directory.
-        :param search: The name or hash of the node to delete.
+        """Delete a child node by name.
+
+        Args:
+            search: Filename or hash to look up.
+
+        Raises:
+            KeyError: If no match is found.
         """
         for node in self.iter(recursive=self.recursive):
             if node.name == search or hash(node) == search:
-                # Check if the node is a file or a directory
                 if node.path.is_dir():
-                    # Delete the directory recursively
                     shutil.rmtree(node.path)
                 else:
-                    # Delete the file
                     node.path.unlink()
                 return
         raise KeyError(f"No node {search} in the directory {self.path}")
-        
-    # - File and directory operations via mathematical operators
-    
+
+    # -- Path join (mirrors pathlib) --
+
     def __truediv__(self, other: Union[str, Path, FileSystemNode]) -> FileSystemNode:
+        """Join the directory path with *other*.
+
+        Args:
+            other: A string, Path, or FileSystemNode to append.
+
+        Returns:
+            A File or Directory for the resulting path.
+
+        Raises:
+            TypeError: If *other* has an unsupported type.
         """
-        Concatenates the directory path with a string, path, or node.
-        example: dir / 'file.txt' returns a file named 'file.txt' in the directory.
-        :param other: The string, path, or node to concatenate.
-        :return: A FileSystemNode instance for the concatenated path.
-        """
-        
         if isinstance(other, str):
             path = self.path / other
         elif isinstance(other, Path):
             path = self.path / other
-        elif isinstance(other, Directory):
-            path = self.path / other.name
-        elif isinstance(other, File):
+        elif isinstance(other, (Directory, File)):
             path = self.path / other.name
         else:
             raise TypeError(f"Unsupported type {type(other)} for concatenation.")
@@ -179,79 +174,85 @@ class Directory(FileSystemNode):
             return Directory(path)
         elif path.is_file():
             return File(path)
-    
-    def __pow__(self, other: 'Directory') -> 'Directory':
-        """
-        Merges two directories.
-        Moves all files and subdirectories from the other directory to the current directory, then deletes the other directory.
-        Example: dir1 ** dir2 merges the contents of dir2 into dir1.
-        :param other: The other directory to merge.
-        :return: The current directory with the merged contents.
+
+    # -- Named methods replacing operators --
+
+    def merge(self, other: "Directory") -> "Directory":
+        """Merge *other* into this directory, then delete *other*.
+
+        Moves all contents from *other* into this directory
+        and removes the now-empty *other* directory.
+
+        Args:
+            other: The directory to merge from.
+
+        Returns:
+            This directory.
         """
         for item in other:
             item.path.rename(self.path / item.name)
         other.path.rmdir()
         return self
-    
-    def __mod__(self, other: str) -> 'Directory':
+
+    def mkdir(self, name: str) -> "Directory":
+        """Create a subdirectory.
+
+        Args:
+            name: Name of the subdirectory to create.
+
+        Returns:
+            A Directory instance for the new subdirectory.
         """
-        Creates a subdirectory in the directory.
-        Example: dir % 'subdir' creates a subdirectory named 'subdir' in the directory 'dir'.
-        :param other: The name of the subdirectory to create.
-        :return: A Directory instance for the new subdirectory.
-        """
-        new_dir = self.path / other
+        new_dir = self.path / name
         new_dir.mkdir()
         return Directory(new_dir)
-    
-    def __and__(self, other: 'Directory') -> set:
+
+    def intersection(self, other: "Directory") -> set:
+        """Return the set intersection of directory contents by name.
+
+        Args:
+            other: The other directory.
+
+        Returns:
+            Set of nodes present in both directories.
         """
-        Creates a set intersection of two directories contents.
-        Example: dir1 & dir2 returns a set of files and directories that are in both dir1 and dir2.
-        :param other: The other directory to compare.
-        :return: A set of files and directories that are in both directories.
-        """
-        return set(self.iter(recursive=self.recursive)) & set(other.iter(other.recursive))
-    
-    def __or__(self, other: 'Directory') -> 'Directory':
-        """
-        Combines two directories.
-        A set union of two sets is the set of elements that are in either of the sets.
-        Example: dir1 | dir2 combines the contents of dir1 and dir2.
-        :param other: The other directory to combine.
-        :return: A directory with the combined contents of the two directories.
+        return set(self.iter(recursive=self.recursive)) & set(
+            other.iter(other.recursive)
+        )
+
+    def union(self, other: "Directory") -> set:
+        """Return the set union of directory contents by name.
+
+        Args:
+            other: The other directory.
+
+        Returns:
+            Set of all nodes from both directories.
         """
         return set(self) | set(other)
-    
-    def __invert__(self) -> 'Directory':
-        """
-        Inverts the directory contents.
-        A set difference of two sets is the set of elements that are in the first set, but not in the second set.
-        Example: ~dir inverts the contents of the directory.
-        :return: A directory with the inverted contents.
-        """
-        return set(self) ^ set(self)
 
-    # Public methods
+    # -- Public methods --
 
-    def iter(self, recursive: bool = False, hidden: bool = False) -> Iterator[FileSystemNode]:
-        """
-        Generator that yields FileSystemNode instances for the contents of the directory.
+    def iter(
+        self, recursive: bool = False, hidden: bool = False
+    ) -> Iterator[FileSystemNode]:
+        """Yield FileSystemNode instances for directory contents.
 
-        :param recursive: If True, recursively includes contents of subdirectories.
-        :param hidden: If True, includes hidden files and directories.
-        :yield: An iterator over FileSystemNode instances.
+        Args:
+            recursive: If True, recurse into subdirectories.
+            hidden: If True, include dotfiles/dotdirs.
+
+        Yields:
+            File or Directory instances.
+
+        Raises:
+            RuntimeError: If the directory cannot be read.
         """
         try:
-            # Use appropriate iterator based on recursive flag
-            nodes_iterator = self.path.rglob('*') if recursive else self.path.iterdir()
-
+            nodes_iterator = self.path.rglob("*") if recursive else self.path.iterdir()
             for node_path in nodes_iterator:
-                # Skip hidden files/directories unless `hidden` is True
-                if not hidden and node_path.name.startswith('.'):
+                if not hidden and node_path.name.startswith("."):
                     continue
-
-                # Use FileSystemNodeFactory to dynamically create nodes
                 try:
                     if node_path.is_file():
                         yield File(node_path)
@@ -259,98 +260,121 @@ class Directory(FileSystemNode):
                         yield Directory(node_path)
                 except (FileNotFoundError, ValueError) as e:
                     raise ValueError(f"Error processing {node_path}: {e}") from e
-
         except Exception as e:
             raise RuntimeError(f"Error accessing contents of {self.path}: {e}") from e
 
+    def iter_dir(
+        self, recursive: bool = False, hidden: bool = False
+    ) -> Iterator["Directory"]:
+        """Yield only Directory children.
 
-    def iter_dir(self, recursive: bool = False, hidden: bool = False) -> Iterator['Directory']:
-        """
-        Generator that yields Directory instances for all subdirectories in the directory.
+        Args:
+            recursive: If True, recurse into subdirectories.
+            hidden: If True, include hidden directories.
 
-        :param recursive: If True, recursively includes subdirectories of subdirectories.
-        :param hidden: If True, includes hidden directories.
-        :yield: An iterator over Directory instances.
+        Yields:
+            Directory instances.
         """
         for node in self.iter(recursive=recursive, hidden=hidden):
             if node.is_instance(Directory):
                 yield node
-    
-    def iter_files(self, recursive: bool = False, hidden: bool = False) -> Iterator[File]:
-        """
-        Generator that yields File instances for all files in the directory.
 
-        :param recursive: If True, recursively includes files in subdirectories.
-        :param hidden: If True, includes hidden files.
-        :yield: An iterator over File instances.
+    def iter_files(
+        self, recursive: bool = False, hidden: bool = False
+    ) -> Iterator[File]:
+        """Yield only File children.
+
+        Args:
+            recursive: If True, recurse into subdirectories.
+            hidden: If True, include hidden files.
+
+        Yields:
+            File instances.
         """
         for node in self.iter(recursive=recursive, hidden=hidden):
             if node.is_instance(File):
                 yield node
-    
+
     def get_size(self) -> int:
-        """
-        Gets the total size of the directory in bytes by us
-        :return: The total size of the directory in bytes.
+        """Return total size of all contained files.
+
+        Returns:
+            Size in bytes.
         """
         if self.size is None:
             self.size = sum(file.get_size() for file in self.iter_files())
         return self.size
-    
+
     def get_type(self) -> FileType:
-        """
-        Gets the type of the directory based on its contents.
-        :return: The FileType of the directory
+        """Determine directory type by majority file type.
+
+        Returns:
+            The most common FileType among contained files.
         """
         files = list(self.iter_files(recursive=True))
-        # Remove files with no extension or with extensions to ignored
-        extension_to_ignore = [None, '', '.DS_Store'] + FileTypeExtensions.OTHER.value + FileTypeExtensions.IMAGE.value + FileTypeExtensions.DOCUMENT.value
-        files_to_ignore = [file for file in files if file.extension in extension_to_ignore]
-        files = [file for file in files if file not in files_to_ignore]
-        file_types = Counter([file.get_type() for file in files])
+        extension_to_ignore = (
+            [None, "", ".DS_Store"]
+            + FileTypeExtensions.OTHER.value
+            + FileTypeExtensions.IMAGE.value
+            + FileTypeExtensions.DOCUMENT.value
+        )
+        files_to_ignore = [f for f in files if f.extension in extension_to_ignore]
+        files = [f for f in files if f not in files_to_ignore]
+        file_types = Counter([f.get_type() for f in files])
         if file_types:
             return max(file_types, key=file_types.get)
         return FileType.OTHER
-        
+
     def count(self) -> int:
-        """
-        Returns the number of nodes in the directory.
-        :return: The number of nodes in the directory.
+        """Return the number of direct children.
+
+        Returns:
+            Child count.
         """
         return sum(1 for _ in self.iter(recursive=False))
-    
+
     def count_dirs(self) -> int:
-        """
-        Returns the number of subdirectories in the directory.
-        :return: The number of subdirectories in the directory.
+        """Return the number of direct subdirectories.
+
+        Returns:
+            Subdirectory count.
         """
         return sum(1 for _ in self.iter_dir(recursive=False))
-    
+
     def count_files(self) -> int:
-        """
-        Returns the number of files in the directory.
-        :return: The number of files in the directory.
+        """Return the number of direct child files.
+
+        Returns:
+            File count.
         """
         return sum(1 for _ in self.iter_files(recursive=False))
-    
-    def delete(self, recursive = False) -> None:
-        """
-        Delete the directory.
-        :param recursive: If True, removes the directory and its contents.
+
+    def delete(self, recursive=False) -> None:
+        """Delete the directory.
+
+        Args:
+            recursive: If True, remove contents recursively.
         """
         if recursive is True:
             shutil.rmtree(self.path)
         else:
             self.path.rmdir()
-    
-    def unpack(self, clean: bool = False, file_only: bool = False, dir_only: bool = False) -> set[FileSystemNode]:
-        """
-        Unpacks the contents of the directory.
-        Moves all files and subdirectories from the directory to its parent directory.
-        :param clean: If True, cleans the nodes names before moving them.
-        :param file_only: If True, only moves files and not subdirectories.
-        :param dir_only: If True, only moves subdirectories and not files.
-        :return: A set of the nodes that were unpacked.
+
+    def unpack(
+        self,
+        clean: bool = False,
+        file_only: bool = False,
+        dir_only: bool = False,
+    ) -> set[FileSystemNode]:
+        """Move contents to the parent directory.
+
+        Args:
+            clean: If True, clean node names before moving.
+            file_only: If True, only move files.
+            dir_only: If True, only move subdirectories.
+
+        Returns:
+            Set of nodes that were unpacked.
         """
         unpacked = set[FileSystemNode]()
         for node in self:
@@ -360,10 +384,8 @@ class Directory(FileSystemNode):
                 continue
             if clean:
                 node.clean_name()
-            # Move the node to the parent directory
             node.move(self.path.parent / node.name)
             unpacked.add(node)
-        # Remove the directory if it is empty
         if not os.listdir(self.path):
             self.delete()
         return unpacked

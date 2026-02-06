@@ -1,13 +1,10 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+"""Mapping of file type categories to their associated extensions."""
 
 from enum import Enum
 
-class FileTypeExtensions(Enum):
 
-    """
-    Enum class for file types.
-    """
+class FileTypeExtensions(Enum):
+    """Enum mapping each file-type category to a list of extensions."""
 
     # Media extensions
     VIDEO = [
@@ -38,23 +35,31 @@ class FileTypeExtensions(Enum):
 
     @classmethod
     def types(cls) -> dict:
-        """
-        Allow to get all the enum members to iterate.
-        @return: A dict with all the enum members.
+        """Return all enum members as a dictionary.
+
+        Returns:
+            Dictionary of member names to FileTypeExtensions values.
         """
         return cls.__members__
 
     @classmethod
     def keys(cls):
-        """
-        Returns the keys of the enum.
+        """Return the names of all enum members.
+
+        Returns:
+            View of member name strings.
         """
         return cls.__members__.keys()
 
     @classmethod
-    def get_file_type(cls, extension):
-        """
-        Returns the FileTypeExtensions member associated with the given extension.
+    def get_file_type(cls, extension: str) -> "FileTypeExtensions | None":
+        """Look up the file type category for a given extension.
+
+        Args:
+            extension: File extension (without leading dot).
+
+        Returns:
+            The matching FileTypeExtensions member, or None.
         """
         for file_type in cls:
             if extension.lower() in file_type.value:

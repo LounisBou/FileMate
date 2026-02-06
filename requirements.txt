@@ -1,5 +1,6 @@
 # Runtime dependencies
 bigtree
+pydantic-settings>=2.0
 python-dotenv
 pydevmate
 redis

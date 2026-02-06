@@ -1,224 +1,171 @@
-#!/usr/bin/env python 
-# -*- coding: utf-8 -*-
+"""Packer module for transferring nodes between file system trees."""
 
 from dataclasses import dataclass, field
+from enum import Enum
+
 from pydevmate import LogIt
 
-from dotenv import load_dotenv
-from filemate.file_system_node_tree import FileSystemNodeTree
-from filemate.file_system_node import FileSystemNode
 from filemate.directory import Directory
+from filemate.exceptions import TransferError
+from filemate.file_system_node import FileSystemNode
+from filemate.file_system_node_tree import FileSystemNodeTree
+
+
+class ConflictPolicy(Enum):
+    """Policy for handling conflicts when a node already exists at destination.
+
+    Attributes:
+        SKIP: Leave the existing destination node untouched.
+        REPLACE: Remove the destination node and add the source node.
+        MERGE: Recursively merge directory contents; replace files.
+    """
+
+    SKIP = "skip"
+    REPLACE = "replace"
+    MERGE = "merge"
+
 
 @dataclass
 class Packer:
-    
-    """
-    Packer class for packing file system nodes from a source tree to a destination tree.
-    This class provides methods to pack, override, merge, and replace file system nodes
-    between two file system node trees. It supports operations such as overriding existing
-    nodes, merging nodes, and replacing nodes in the destination tree with those from the source tree
-    """
-    
-    source: FileSystemNodeTree = field(init=True, default=None, metadata={"help": "The source file system node tree."})
-    destination: FileSystemNodeTree = field(init=True, default=None, metadata={"help": "The destination file system node tree."})
-    override: bool = field(init=True, default=False, metadata={"help": "Override destination nodes if they exist."})
-    merge: bool = field(init=True, default=False, metadata={"help": "Merge the source and destination nodes."})
-    verbose: bool = field(init=True, default=False, metadata={"help": "Verbose output."})
-    logger: LogIt = field(init=True, default_factory=LogIt, metadata={"help": "The logger."})
-    
-    def __post_init__(self) -> None:
-        """
-        Initializes the packer.
-        """
-        # Load the environment variables
-        load_dotenv()
-        
-        
-    def pack_all(self) -> None:
-        """
-        Packs the entire source file system node tree into the destination file system node tree.
-        """
-        # For each first level node in the source tree
-        for node_from_source in self.source.root_node.children:
-            # Find the node_from_source in the destination tree
-            node_from_destination = self.destination.search_node_by_name(node_from_source)
-            # Pack the node_from_source into the node_from_destination
-            self.pack(node_from_source, node_from_destination)
-        
+    """Transfer nodes between two FileSystemNodeTree instances.
 
-    def pack(self, node_from_source: FileSystemNode, node_from_destination: FileSystemNode = None) -> None:
+    Attributes:
+        source: The source tree.
+        destination: The destination tree.
+        policy: Conflict resolution policy.
+        dry_run: If True, log actions without performing them.
+        verbose: If True, emit extra log output.
+        logger: Logger instance.
+    """
+
+    source: FileSystemNodeTree = field(init=True, default=None)
+    destination: FileSystemNodeTree = field(init=True, default=None)
+    policy: ConflictPolicy = field(init=True, default=ConflictPolicy.SKIP)
+    dry_run: bool = field(init=True, default=False)
+    verbose: bool = field(init=True, default=False)
+    logger: LogIt = field(init=True, default_factory=LogIt)
+
+    def transfer(self, node_name: str) -> str:
+        """Transfer a single top-level node from source to destination.
+
+        Args:
+            node_name: Name of the node to transfer.
+
+        Returns:
+            The name of the transferred node.
+
+        Raises:
+            TransferError: If the node is not found in the source tree.
         """
-        Packs the source file system node tree into the destination file system node tree.
-        :param node_from_source: The source file system node.
-        :param node_from_destination: The destination file system node. Default is None.
-        :return: bool - True if the packing was successful, False otherwise.
-        """
-        # Check if node_from_destination is None
-        if node_from_destination is None:
-            # Find node_from_source in the destination tree
-            node_from_destination = self.destination.search_node_by_name(node_from_source)
-        # Check if node_from_destination exists
-        if node_from_destination is not None:
-            # Check if override is True
-            if self.override:
-                # Override the node_from_destination
-                self.override_node(node_from_source, node_from_destination)
-            # Check if merge is True
-            elif self.merge:
-                # Merge the node_from_source and node_from_destination
-                self.merge_node(node_from_source, node_from_destination)
-            # Check if override and merge are False
-            else:
-                # Replace the content of node_from_destination with the content of node_from_source
-                self.replace_node(node_from_source, node_from_destination)
-                
-    def override_node(self, node_from_source: FileSystemNode, node_from_destination: FileSystemNode) -> None:
-        """
-        Overrides the destination file system node with the source file system node.
-        :param node_from_source: The source file system node.
-        :param node_from_destination: The destination file system node.
-        """
-        # Check if node_from_source is a directory
-        if node_from_source.is_instance(Directory):
-            # Check if node_from_destination is a directory
-            if node_from_destination.is_instance(Directory):
-                # Override the directory
-                self.override_directory(node_from_source, node_from_destination)
-            else:
-                # Replace the content of node_from_destination with the content of node_from_source
-                self.replace_node(node_from_source, node_from_destination)
+        src_node = self.source.search_node_by_name(node_name)
+        if src_node is None:
+            raise TransferError(f"Node '{node_name}' not found in source tree.")
+
+        dst_node = self.destination.search_node_by_name(node_name)
+
+        if dst_node is not None:
+            self._resolve_conflict(src_node, dst_node)
         else:
-            # Replace the content of node_from_destination with the content of node_from_source
-            self.replace_node(node_from_source, node_from_destination)
-            
-    def override_directory(self, node_from_source: Directory, node_from_destination: Directory) -> None:
+            self._add_node(src_node)
+
+        return node_name
+
+    def transfer_all(self) -> list[str]:
+        """Transfer all top-level children from source to destination.
+
+        Returns:
+            List of transferred node names.
         """
-        Overrides the destination directory with the source directory.
-        :param node_from_source: The source directory.
-        :param node_from_destination: The destination directory.
+        transferred = []
+        for child in self.source.children():
+            name = child.name
+            try:
+                self.transfer(name)
+                transferred.append(name)
+            except TransferError as e:
+                self.logger.warning(str(e))
+        return transferred
+
+    def _resolve_conflict(self, src_node, dst_node) -> None:
+        """Handle a conflict where the node exists in both trees.
+
+        Args:
+            src_node: The source tree node.
+            dst_node: The destination tree node.
         """
-        # Iterate over the source directory's children
-        for child_node_from_source in node_from_source.iter(recursive=False, hidden=False):
-            # Find the child_node_from_source in the destination directory
-            child_node_from_destination = self.destination.search_node_by_name(child_node_from_source)
-            # Check if child_node_from_destination exists
-            if child_node_from_destination is not None:
-                # Pack the child_node_from_source into the child_node_from_destination
-                self.pack(child_node_from_source, child_node_from_destination)
+        if self.policy == ConflictPolicy.SKIP:
+            if self.verbose:
+                self.logger.info(f"Skipping existing node: {src_node.name}")
+            return
+
+        if self.policy == ConflictPolicy.REPLACE:
+            if not self.dry_run:
+                dst_node.parent = None  # detach existing
+                self._add_node(src_node)
             else:
-                # Add the child_node_from_source to the destination directory
-                self.add_node(child_node_from_source, node_from_destination)
-                
-    def merge_node(self, node_from_source: FileSystemNode, node_from_destination: FileSystemNode) -> None:
-        """
-        Merges the source file system node with the destination file system node.
-        :param node_from_source: The source file system node.
-        :param node_from_destination: The destination file system node.
-        """
-        # Check if node_from_source is a directory
-        if node_from_source.is_instance(Directory):
-            # Check if node_from_destination is a directory
-            if node_from_destination.is_instance(Directory):
-                # Merge the directory
-                self.merge_directory(node_from_source, node_from_destination)
+                self.logger.info(f"Would replace: {src_node.name}")
+            return
+
+        if self.policy == ConflictPolicy.MERGE:
+            if not self.dry_run:
+                # For merge, add children of source that don't exist in destination
+                for child in getattr(src_node, "children", []) or []:
+                    existing = self.destination.search_node_by_name(child.name)
+                    if existing is None:
+                        self._add_child_node(child, dst_node)
+                    else:
+                        # Recursively resolve
+                        self._resolve_conflict(child, existing)
             else:
-                # Replace the content of node_from_destination with the content of node_from_source
-                self.replace_node(node_from_source, node_from_destination)
-        else:
-            # Replace the content of node_from_destination with the content of node_from_source
-            self.replace_node(node_from_source, node_from_destination)
-            
-    def merge_directory(self, node_from_source: Directory, node_from_destination: Directory) -> None:
+                self.logger.info(f"Would merge: {src_node.name}")
+
+    def _add_node(self, src_node) -> None:
+        """Add a source node under the destination root.
+
+        Args:
+            src_node: The source tree node to add.
         """
-        Merges the source directory with the destination directory.
-        :param node_from_source: The source directory.
-        :param node_from_destination: The destination directory.
+        if not self.dry_run:
+            from bigtree import Node as TreeNode
+
+            TreeNode(src_node.name, parent=self.destination.root_tree_node)
+
+    def _add_child_node(self, src_node, dst_parent) -> None:
+        """Add a source node as a child of a destination node.
+
+        Args:
+            src_node: The source tree node to add.
+            dst_parent: The destination parent node.
         """
-        # Iterate over the source directory's children
-        for child_node_from_source in node_from_source.iter(recursive=False, hidden=False):
-            # Find the child_node_from_source in the destination directory
-            child_node_from_destination = self.destination.search_node_by_name(child_node_from_source)
-            # Check if child_node_from_destination exists
-            if child_node_from_destination is not None:
-                # Merge the child_node_from_source into the child_node_from_destination
-                self.merge_node(child_node_from_source, child_node_from_destination)
-            else:
-                # Add the child_node_from_source to the destination directory
-                self.add_node(child_node_from_source, node_from_destination)
-                
-    def replace_node(self, node_from_source: FileSystemNode, node_from_destination: FileSystemNode) -> None:
-        """
-        Replaces the content of the destination file system node with the content of the source file system node.
-        :param node_from_source: The source file system node.
-        :param node_from_destination: The destination file system node.
-        """
-        # Check if node_from_source is a directory
-        if node_from_source.is_instance(Directory):
-            # Check if node_from_destination is a directory
-            if node_from_destination.is_instance(Directory):
-                # Replace the directory
-                self.replace_directory(node_from_source, node_from_destination)
-            else:
-                # Replace the content of node_from_destination with the content of node_from_source
-                self.add_node(node_from_source, node_from_destination.parent)
-        else:
-            # Replace the content of node_from_destination with the content of node_from_source
-            self.add_node(node_from_source, node_from_destination.parent)
-        
-    def replace_directory(self, node_from_source: Directory, node_from_destination: Directory) -> None:
-        """
-        Replaces the content of the destination directory with the content of the source directory.
-        :param node_from_source: The source directory.
-        :param node_from_destination: The destination directory.
-        """
-        # Remove the destination directory
-        self.remove_node(node_from_destination)
-        # Add the source directory to the destination directory's parent
-        self.add_node(node_from_source, node_from_destination.parent)
-        
-    def add_node(self, node: FileSystemNode, parent: FileSystemNode) -> None:
-        """
-        Adds a new node to the parent node.
-        :param node: The new node to add.
-        :param parent: The parent node.
-        """
-        # Add the node to the parent
-        self.destination.add_node(parent.path, node)
-        
-    def remove_node(self, node: FileSystemNode) -> None:
-        """
-        Removes a node from the destination tree.
-        :param node: The node to remove.
-        """
-        # Remove the node from the destination tree
-        self.destination.remove_node(node.path)
-        
+        if not self.dry_run:
+            from bigtree import Node as TreeNode
+
+            TreeNode(src_node.name, parent=dst_parent)
+
     def __str__(self) -> str:
-        """
-        Returns a string representation of the packer.
-        :return: A string representation of the packer.
-        """
-        return f"Packer: Source={self.source.root_node.path}, Destination={self.destination.root_node.path}"
-    
+        """Return a string summary of the packer."""
+        src = self.source.root_node.path if self.source else "None"
+        dst = self.destination.root_node.path if self.destination else "None"
+        return f"Packer: Source={src}, Destination={dst}"
+
     def __repr__(self) -> str:
-        """
-        Returns a string representation of the packer.
-        :return: A string representation of the packer.
-        """
-        return f"Packer: Source={self.source.root_node.path}, Destination={self.destination.root_node.path}"
-    
+        """Return a string summary of the packer."""
+        return self.__str__()
+
     def __bool__(self) -> bool:
-        """
-        Returns True if the packer is valid, False otherwise.
-        :return: bool - True if the packer is valid, False otherwise.
-        """
+        """Return True if both source and destination are set."""
         return self.source is not None and self.destination is not None
-    
-    def __call__(self, node_from_source: FileSystemNode, node_from_destination: FileSystemNode = None) -> None:
+
+    def __call__(
+        self,
+        node_name: str,
+    ) -> str:
+        """Shortcut for transfer().
+
+        Args:
+            node_name: Name of the node to transfer.
+
+        Returns:
+            The name of the transferred node.
         """
-        Packs the source file system node tree into the destination file system node tree.
-        :param node_from_source: The source file system node.
-        :param node_from_destination: The destination file system node. Default is None.
-        """
-        self.pack(node_from_source, node_from_destination)
-        
+        return self.transfer(node_name)

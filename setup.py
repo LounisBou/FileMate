@@ -52,6 +52,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "bigtree",
+        "pydantic-settings>=2.0",
         "python-dotenv",
         "pydevmate",
         "redis",

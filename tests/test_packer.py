@@ -1,11 +1,12 @@
 """Tests for the Packer class."""
+
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from filemate.directory import Directory
-from filemate.file import File
+from filemate.exceptions import TransferError
 from filemate.file_system_node_tree import FileSystemNodeTree
-from filemate.packer import Packer
+from filemate.packer import ConflictPolicy, Packer
 
 
 def _make_tree(tmp_path, name, files, env_setup, mock_redis):
@@ -25,6 +26,7 @@ def _make_tree(tmp_path, name, files, env_setup, mock_redis):
 
 
 # -- String representations & basic --
+
 
 def test_packer_str(tmp_path, env_setup, mock_redis):
     """__str__ includes source and destination paths."""
@@ -66,138 +68,114 @@ def test_packer_bool_false_no_dest(tmp_path, env_setup, mock_redis):
     assert bool(packer) is False
 
 
-# -- pack() with explicit destination (replace mode, default) --
+# -- transfer() --
 
-def test_pack_replace_file_to_file(tmp_path, env_setup, mock_redis):
-    """pack() in replace mode: file replaces file (mocked add_node)."""
+
+def test_transfer_skip(tmp_path, env_setup, mock_redis):
+    """With SKIP policy, existing destination node is left untouched."""
     src = _make_tree(tmp_path, "src", [("a.txt", "src_a")], env_setup, mock_redis)
     dst = _make_tree(tmp_path, "dst", [("a.txt", "dst_a")], env_setup, mock_redis)
-    packer = Packer(source=src, destination=dst)
-    src_file = File(tmp_path / "src" / "a.txt")
-    dst_file = File(tmp_path / "dst" / "a.txt")
-    # Mock Packer's add_node to avoid broken parent.path access
-    with patch.object(packer, "add_node"):
-        packer.pack(src_file, dst_file)
+    packer = Packer(source=src, destination=dst, policy=ConflictPolicy.SKIP)
+    result = packer.transfer("a.txt")
+    assert result == "a.txt"
+    # Destination tree should still have the original node
+    assert dst.search_node_by_name("a.txt") is not None
 
 
-def test_pack_replace_dir_to_dir(tmp_path, env_setup, mock_redis):
-    """pack() in replace mode: directory replaces directory (mocked)."""
+def test_transfer_replace(tmp_path, env_setup, mock_redis):
+    """With REPLACE policy, existing destination node is replaced."""
+    src = _make_tree(tmp_path, "src", [("a.txt", "src_a")], env_setup, mock_redis)
+    dst = _make_tree(tmp_path, "dst", [("a.txt", "dst_a")], env_setup, mock_redis)
+    packer = Packer(source=src, destination=dst, policy=ConflictPolicy.REPLACE)
+    result = packer.transfer("a.txt")
+    assert result == "a.txt"
+    # A node named a.txt should exist in destination (the replacement)
+    assert dst.search_node_by_name("a.txt") is not None
+
+
+def test_transfer_merge(tmp_path, env_setup, mock_redis):
+    """With MERGE policy, source children are merged into destination."""
+    # Source has a subdir with a file
     src_root = tmp_path / "src"
     src_root.mkdir()
     src_sub = src_root / "sub"
     src_sub.mkdir()
-    (src_sub / "file.txt").write_text("x", encoding="utf-8")
+    (src_sub / "new.txt").write_text("new", encoding="utf-8")
+    src_tree = FileSystemNodeTree(Directory(src_root))
+    src_tree.build()
+
+    # Destination has the same subdir but different file
     dst_root = tmp_path / "dst"
     dst_root.mkdir()
     dst_sub = dst_root / "sub"
     dst_sub.mkdir()
-    (dst_sub / "old.txt").write_text("y", encoding="utf-8")
-
-    src_tree = FileSystemNodeTree(Directory(src_root))
-    src_tree.build()
+    (dst_sub / "old.txt").write_text("old", encoding="utf-8")
     dst_tree = FileSystemNodeTree(Directory(dst_root))
     dst_tree.build()
 
-    packer = Packer(source=src_tree, destination=dst_tree)
-    src_dir_node = Directory(src_sub)
-    dst_dir_node = Directory(dst_sub)
-    # Mock both add_node and remove_node on the Packer
-    with patch.object(packer, "add_node"), patch.object(packer, "remove_node"):
-        packer.pack(src_dir_node, dst_dir_node)
+    packer = Packer(source=src_tree, destination=dst_tree, policy=ConflictPolicy.MERGE)
+    result = packer.transfer("sub")
+    assert result == "sub"
+    # new.txt should now be in destination under sub
+    assert dst_tree.search_node_by_name("new.txt") is not None
+    # old.txt should still be there
+    assert dst_tree.search_node_by_name("old.txt") is not None
+
+
+def test_transfer_new_node(tmp_path, env_setup, mock_redis):
+    """Node not in destination is added."""
+    src = _make_tree(tmp_path, "src", [("unique.txt", "data")], env_setup, mock_redis)
+    dst = _make_tree(tmp_path, "dst", [("other.txt", "other")], env_setup, mock_redis)
+    packer = Packer(source=src, destination=dst)
+    result = packer.transfer("unique.txt")
+    assert result == "unique.txt"
+    assert dst.search_node_by_name("unique.txt") is not None
+
+
+def test_transfer_not_found(tmp_path, env_setup, mock_redis):
+    """TransferError for node not in source."""
+    src = _make_tree(tmp_path, "src", [("a.txt", "a")], env_setup, mock_redis)
+    dst = _make_tree(tmp_path, "dst", [("b.txt", "b")], env_setup, mock_redis)
+    packer = Packer(source=src, destination=dst)
+    with pytest.raises(TransferError, match="not found"):
+        packer.transfer("nonexistent.txt")
+
+
+def test_transfer_all(tmp_path, env_setup, mock_redis):
+    """transfer_all transfers all top-level nodes."""
+    src = _make_tree(
+        tmp_path, "src", [("a.txt", "a"), ("b.txt", "b")], env_setup, mock_redis
+    )
+    dst = _make_tree(tmp_path, "dst", [], env_setup, mock_redis)
+    packer = Packer(source=src, destination=dst)
+    result = packer.transfer_all()
+    assert "a.txt" in result
+    assert "b.txt" in result
+
+
+def test_dry_run(tmp_path, env_setup, mock_redis):
+    """Dry run does not modify destination tree."""
+    src = _make_tree(tmp_path, "src", [("a.txt", "a")], env_setup, mock_redis)
+    dst = _make_tree(tmp_path, "dst", [("a.txt", "dst_a")], env_setup, mock_redis)
+    packer = Packer(
+        source=src,
+        destination=dst,
+        policy=ConflictPolicy.REPLACE,
+        dry_run=True,
+    )
+    packer.transfer("a.txt")
+    # In dry run, destination should still have only its original children
+    children = dst.children()
+    assert len(children) == 1
 
 
 # -- __call__ --
 
+
 def test_packer_call(tmp_path, env_setup, mock_redis):
-    """__call__ delegates to pack."""
+    """__call__ delegates to transfer."""
     src = _make_tree(tmp_path, "src", [("a.txt", "a")], env_setup, mock_redis)
-    dst = _make_tree(tmp_path, "dst", [("a.txt", "a")], env_setup, mock_redis)
+    dst = _make_tree(tmp_path, "dst", [], env_setup, mock_redis)
     packer = Packer(source=src, destination=dst)
-    src_file = File(tmp_path / "src" / "a.txt")
-    dst_file = File(tmp_path / "dst" / "a.txt")
-    with patch.object(packer, "add_node"):
-        packer(src_file, dst_file)
-
-
-# -- pack() with override mode --
-
-def test_pack_override_file(tmp_path, env_setup, mock_redis):
-    """pack() with override=True for file nodes delegates to replace."""
-    src = _make_tree(tmp_path, "src", [("a.txt", "src_a")], env_setup, mock_redis)
-    dst = _make_tree(tmp_path, "dst", [("a.txt", "dst_a")], env_setup, mock_redis)
-    packer = Packer(source=src, destination=dst, override=True)
-    src_file = File(tmp_path / "src" / "a.txt")
-    dst_file = File(tmp_path / "dst" / "a.txt")
-    with patch.object(packer, "add_node"):
-        packer.pack(src_file, dst_file)
-
-
-def test_pack_override_dir(tmp_path, env_setup, mock_redis):
-    """pack() with override=True for directory nodes calls override_directory."""
-    src_root = tmp_path / "src"
-    src_root.mkdir()
-    src_sub = src_root / "sub"
-    src_sub.mkdir()
-    (src_sub / "file.txt").write_text("x", encoding="utf-8")
-    dst_root = tmp_path / "dst"
-    dst_root.mkdir()
-    dst_sub = dst_root / "sub"
-    dst_sub.mkdir()
-
-    src_tree = FileSystemNodeTree(Directory(src_root))
-    src_tree.build()
-    dst_tree = FileSystemNodeTree(Directory(dst_root))
-    dst_tree.build()
-
-    packer = Packer(source=src_tree, destination=dst_tree, override=True)
-    src_dir = Directory(src_sub)
-    dst_dir = Directory(dst_sub)
-    # Mock search_node_by_name (called with FileSystemNode, returns None),
-    # and add_node/remove_node to avoid broken parent.path
-    with (
-        patch.object(packer, "add_node"),
-        patch.object(packer, "remove_node"),
-        patch.object(dst_tree, "search_node_by_name", return_value=None),
-    ):
-        packer.pack(src_dir, dst_dir)
-
-
-# -- pack() with merge mode --
-
-def test_pack_merge_file(tmp_path, env_setup, mock_redis):
-    """pack() with merge=True for file nodes delegates to replace."""
-    src = _make_tree(tmp_path, "src", [("a.txt", "src_a")], env_setup, mock_redis)
-    dst = _make_tree(tmp_path, "dst", [("a.txt", "dst_a")], env_setup, mock_redis)
-    packer = Packer(source=src, destination=dst, merge=True)
-    src_file = File(tmp_path / "src" / "a.txt")
-    dst_file = File(tmp_path / "dst" / "a.txt")
-    with patch.object(packer, "add_node"):
-        packer.pack(src_file, dst_file)
-
-
-def test_pack_merge_dir(tmp_path, env_setup, mock_redis):
-    """pack() with merge=True for directory nodes calls merge_directory."""
-    src_root = tmp_path / "src"
-    src_root.mkdir()
-    src_sub = src_root / "sub"
-    src_sub.mkdir()
-    (src_sub / "new.txt").write_text("x", encoding="utf-8")
-    dst_root = tmp_path / "dst"
-    dst_root.mkdir()
-    dst_sub = dst_root / "sub"
-    dst_sub.mkdir()
-
-    src_tree = FileSystemNodeTree(Directory(src_root))
-    src_tree.build()
-    dst_tree = FileSystemNodeTree(Directory(dst_root))
-    dst_tree.build()
-
-    packer = Packer(source=src_tree, destination=dst_tree, merge=True)
-    src_dir = Directory(src_sub)
-    dst_dir = Directory(dst_sub)
-    with (
-        patch.object(packer, "add_node"),
-        patch.object(packer, "remove_node"),
-        patch.object(dst_tree, "search_node_by_name", return_value=None),
-    ):
-        packer.pack(src_dir, dst_dir)
+    result = packer("a.txt")
+    assert result == "a.txt"
