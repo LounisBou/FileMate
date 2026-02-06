@@ -120,6 +120,20 @@ def test_name_without_year(name_cleaner):
     assert "title" in result
 
 
+def test_season_and_episode_separate(name_cleaner):
+    """Separate season and episode patterns in same string."""
+    season, episode = name_cleaner.get_season_and_episode_from_node_name("s02 stuff e05")
+    assert season == 2
+    assert episode == 5
+
+
+def test_season_episode_season_format(name_cleaner):
+    """'season 3 episode 7' long-form pattern."""
+    season, episode = name_cleaner.get_season_and_episode_from_node_name("season 3 episode 7")
+    assert season == 3
+    assert episode == 7
+
+
 def test_name_without_season_episode(name_cleaner):
     """Season/episode stripped from name."""
     result = name_cleaner.get_name_without_season_and_episode("show s01e04 extra")

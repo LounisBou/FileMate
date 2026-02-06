@@ -164,3 +164,46 @@ def test_file_pack(tmp_path, env_setup):
     assert pack_dir.is_dir()
     assert pack_dir.name == "packme"
     assert (pack_dir / "packme.mp4").exists()
+
+
+def test_file_str(tmp_path, env_setup):
+    """__str__ returns 'File: name'."""
+    f = tmp_path / "hello.txt"
+    f.write_text("x", encoding="utf-8")
+    node = File(f)
+    assert str(node) == "File: hello.txt"
+
+
+def test_file_repr(tmp_path, env_setup):
+    """__repr__ returns multi-line detail string."""
+    f = tmp_path / "detail.txt"
+    f.write_text("x", encoding="utf-8")
+    node = File(f)
+    r = repr(node)
+    assert "File:" in r
+    assert "Name:" in r
+    assert "Extension:" in r
+    assert "Type:" in r
+
+
+def test_file_get_size_returns_zero_by_default(tmp_path, env_setup):
+    """get_size() returns 0 because size defaults to 0 (not None)."""
+    f = tmp_path / "sized.txt"
+    f.write_text("hello world", encoding="utf-8")
+    node = File(f)
+    # size defaults to 0, and get_size only loads when None
+    assert node.get_size() == 0
+
+
+def test_file_pack_with_includes(tmp_path, env_setup):
+    """pack(includes=...) packs the file with additional nodes."""
+    f = tmp_path / "main film.mp4"
+    f.write_bytes(b"\x00" * 10)
+    sub = tmp_path / "main film.srt"
+    sub.write_text("subtitles", encoding="utf-8")
+    main_node = File(f)
+    sub_node = File(sub)
+    pack_dir = main_node.pack(includes={sub_node})
+    assert pack_dir.is_dir()
+    assert (pack_dir / "main film.mp4").exists()
+    assert (pack_dir / "main film.srt").exists()

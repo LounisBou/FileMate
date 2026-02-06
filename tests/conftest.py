@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Fixtures and configuration for pytest."""
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -58,3 +59,49 @@ def sample_dir(tmp_path, env_setup):
 def name_cleaner(env_setup):
     """Return a NodeNameCleaner instance."""
     return NodeNameCleaner()
+
+
+def _noop_cache_decorator(*args, **kwargs):
+    """No-op replacement for CacheIt decorator."""
+    def decorator(func):
+        return func
+    # Handle both @CacheIt and @CacheIt(...) usage
+    if args and callable(args[0]):
+        return args[0]
+    return decorator
+
+
+@pytest.fixture()
+def mock_redis():
+    """Patch pydevmate.CacheIt and SaveIt so tests don't need Redis."""
+    mock_saveit_cls = MagicMock()
+    mock_saveit_cls.return_value = MagicMock()
+
+    with (
+        patch("pydevmate.CacheIt", side_effect=_noop_cache_decorator),
+        patch("pydevmate.SaveIt", mock_saveit_cls),
+        patch("filemate.file_system_node_tree.CacheIt", side_effect=_noop_cache_decorator),
+        patch("filemate.file_system_node_tree.SaveIt", mock_saveit_cls),
+        patch("filemate.file_system_node_tree.TimeIt", side_effect=_noop_cache_decorator),
+    ):
+        yield mock_saveit_cls
+
+
+@pytest.fixture()
+def tree_setup(tmp_path, env_setup, mock_redis):
+    """Create a directory structure and return a FileSystemNodeTree."""
+    from filemate.directory import Directory
+    from filemate.file_system_node_tree import FileSystemNodeTree
+
+    root = tmp_path / "tree_root"
+    root.mkdir()
+    (root / "file_a.txt").write_text("aaa", encoding="utf-8")
+    (root / "file_b.mp4").write_bytes(b"\x00" * 100)
+    sub = root / "subdir"
+    sub.mkdir()
+    (sub / "nested.txt").write_text("nested", encoding="utf-8")
+
+    root_node = Directory(root)
+    tree = FileSystemNodeTree(root_node)
+    tree.build()
+    return tree
