@@ -8,6 +8,10 @@ build/
 dist/
 *.egg-info/
 
+# Ignore env files
+.env*
+!env.example
+
 # Ignore claude config
 .claude/
 
