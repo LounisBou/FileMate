@@ -250,3 +250,79 @@ def test_sorter_process_verbose(tmp_path, sorter_env_setup):
     root = Directory(d)
     sorter = Sorter(root, verbose=True)
     sorter.process()
+
+
+def test_sorter_tvshow_matches_existing_dir(tmp_path, sorter_env_setup):
+    """TV show file lands in existing dir instead of creating a duplicate."""
+    d = tmp_path / "root_tvmatch"
+    d.mkdir()
+    _create_sorted_dirs(d)
+    # Pre-create "The Pitt (2025)" inside TV shows sorted dir
+    existing = d / "002-TVSHOWS" / "The Pitt (2025)"
+    existing.mkdir(parents=True)
+    # File with extra junk tokens that would normally create a duplicate
+    f = d / "the pitt s02e05 1100 hmax.mp4"
+    f.write_bytes(b"\x00" * 10)
+    root = Directory(d)
+    sorter = Sorter(root)
+    file_node = File(f)
+    dest = sorter._Sorter__get_node_destination_path(file_node)
+    assert dest == existing
+
+
+def test_sorter_movie_file_matches_existing_dir(tmp_path, sorter_env_setup):
+    """Movie file routes to existing matching dir."""
+    d = tmp_path / "root_movmatch"
+    d.mkdir()
+    _create_sorted_dirs(d)
+    existing = d / "001-MOVIES" / "The Matrix (1999)"
+    existing.mkdir(parents=True)
+    f = d / "the matrix 1999.mp4"
+    f.write_bytes(b"\x00" * 10)
+    root = Directory(d)
+    sorter = Sorter(root)
+    file_node = File(f)
+    dest = sorter._Sorter__get_node_destination_path(file_node)
+    assert dest == existing
+
+
+def test_sorter_movie_dir_matches_existing_dir(tmp_path, sorter_env_setup):
+    """Movie directory matches existing dir (no rename, move into parent)."""
+    d = tmp_path / "root_mdirmatch"
+    d.mkdir()
+    _create_sorted_dirs(d)
+    existing = d / "001-MOVIES" / "The Matrix (1999)"
+    existing.mkdir(parents=True)
+    # Incoming dir with slightly different name
+    movie_dir = d / "the matrix 1999 remastered"
+    movie_dir.mkdir()
+    (movie_dir / "the matrix.mp4").write_bytes(b"\x00" * 10)
+    root = Directory(d)
+    sorter = Sorter(root)
+    dir_node = Directory(movie_dir)
+    dest = sorter._Sorter__get_node_destination_path(dir_node)
+    # Should return the parent of the matched dir (001-MOVIES)
+    assert dest == d / "001-MOVIES"
+
+
+def test_sorter_sequential_grouping(tmp_path, sorter_env_setup):
+    """First file creates dir, second file matches it."""
+    d = tmp_path / "root_seqgroup"
+    d.mkdir()
+    _create_sorted_dirs(d)
+    f1 = d / "cool show s01e01.mp4"
+    f1.write_bytes(b"\x00" * 10)
+    f2 = d / "cool show s01e02.mp4"
+    f2.write_bytes(b"\x00" * 10)
+    root = Directory(d)
+    sorter = Sorter(root)
+    # Sort first file — creates "Cool show" dir
+    sorter.sort(File(f1))
+    # Sort second file — should match the just-created dir
+    sorter.sort(File(f2))
+    tvshows = d / "002-TVSHOWS"
+    show_dirs = [p for p in tvshows.iterdir() if p.is_dir()]
+    # Both episodes should end up in the same directory
+    assert len(show_dirs) == 1
+    episodes = list(show_dirs[0].rglob("*.mp4"))
+    assert len(episodes) == 2

@@ -18,6 +18,7 @@ from filemate.sorting_strategies import (
     MovieStrategy,
     SortingStrategy,
     TVShowStrategy,
+    find_matching_directory,
 )
 
 
@@ -188,6 +189,13 @@ class Sorter:
                 )
             else:
                 folder_name = node.stem_cleaned
+
+            match = find_matching_directory(
+                folder_name, sorted_dir.path, self.name_cleaner, respect_year=True
+            )
+            if match is not None:
+                return match.parent
+
             if not self.dry_run:
                 node.rename(folder_name.capitalize())
             else:
