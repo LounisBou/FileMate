@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Setup script for YoutubeTrailerScraper."""
+"""Setup script for FileMate."""
 from pathlib import Path
 import importlib.util
 
 from setuptools import setup, find_packages  # pylint: disable=import-error
 
-# Load the _about.py module from src layout
+# Load the _about.py module
 spec = importlib.util.spec_from_file_location(
-    "_about", Path(__file__).parent / "src" / "filemate" / "_about.py"
+    "_about", Path(__file__).parent / "filemate" / "_about.py"
 )
 about_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(about_module)
@@ -23,7 +23,7 @@ about = {
 }
 
 readme = Path("README.md")
-long_description = readme.read_text(encoding="utf-8") if readme.exists() else about["__description__"] # pylint: disable=line-too-long
+long_description = readme.read_text(encoding="utf-8") if readme.exists() else about["__description__"]
 
 setup(
     name=about["__package_name__"],
@@ -35,8 +35,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url=about["__url__"],
-    package_dir={"": "src"},
-    packages=find_packages(where="src"),
+    packages=find_packages(exclude=["tests*"]),
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -47,32 +46,26 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
-        
         "License :: OSI Approved :: Apache Software License",
-        
     ],
-    keywords="python template package",
+    keywords="filemate nas filesystem media organizer sorter",
     python_requires=">=3.9",
     install_requires=[
-        'diskcache',
-        'psutil',
-        'redis',
-        'setuptools',
-        'termcolor',
+        "bigtree",
+        "python-dotenv",
+        "pydevmate",
+        "redis",
+        "diskcache",
+        "psutil",
+        "termcolor",
     ],
     entry_points={
-        'console_scripts': [
-            'filemate=filemate.__main__:main',  # Command-line entry point
+        "console_scripts": [
+            "filemate=filemate.__main__:main",
         ],
     },
-    classifiers=[
-        'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: MIT License',
-        'Operating System :: OS Independent',
-    ],
     extras_require={
         "dev": [
-            # Test / Dev tools
             "pytest",
             "pytest-cov",
             "mypy",

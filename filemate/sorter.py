@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pymate import LogIt
+from pydevmate import LogIt
 
 from filemate.directory import Directory
 from filemate.file import File

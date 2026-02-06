@@ -1,4 +1,4 @@
-"""Minimal CLI sanity tests using the top-level script."""
+"""CLI sanity tests using the top-level script."""
 from __future__ import annotations
 
 import subprocess
@@ -15,9 +15,13 @@ def test_cli_help() -> None:
     assert "usage" in cp.stdout.lower() or "help" in cp.stdout.lower()
 
 
-def test_cli_runs_default() -> None:
+def test_cli_missing_path() -> None:
+    """Missing required path argument should exit with code 2."""
     cp = run_cli()
-    assert cp.returncode == 0
-    # Placeholder output from template CLI
-    assert "placeholder" in cp.stdout.lower()
+    assert cp.returncode == 2
 
+
+def test_cli_nonexistent_path() -> None:
+    """Providing a nonexistent path should error."""
+    cp = run_cli("/nonexistent/path/that/does/not/exist")
+    assert cp.returncode != 0

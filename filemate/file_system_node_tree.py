@@ -9,7 +9,7 @@ from typing import ClassVar
 
 from bigtree import Node as TreeNode
 from bigtree import dict_to_tree, print_tree, tree_to_dict
-from pymate import CacheIt, LogIt, SaveIt, TimeIt
+from pydevmate import CacheIt, LogIt, SaveIt, TimeIt
 from termcolor import colored
 
 from filemate.directory import Directory

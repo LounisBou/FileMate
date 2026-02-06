@@ -1,5 +1,11 @@
 # Runtime dependencies
-
+bigtree
+python-dotenv
+pydevmate
+redis
+diskcache
+psutil
+termcolor
 
 # Test / Dev tools (optional for CI)
 pytest
@@ -8,7 +14,6 @@ black
 isort
 mypy
 pylint
-termcolor
 flake8
 flake8-bugbear
 

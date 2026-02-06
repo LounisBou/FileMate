@@ -14,7 +14,7 @@ from filemate.file_type import FileType
 from filemate.file_type_extensions import FileTypeExtensions
 
 
-@dataclass
+@dataclass(eq=False)
 class Directory(FileSystemNode):
 
     """ A class to represent a directory. """

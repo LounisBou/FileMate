@@ -304,7 +304,7 @@ class FileSystemNode(ABC):
         Check if node name contains a year. If it does, return the year. Otherwise, return 0.
         Patern: yyyy
         """
-        return self.name_cleaner.get_year_from_node_name(self.path)
+        return self.name_cleaner.get_year_from_node_name(self.name)
                 
     # - Path operations
     

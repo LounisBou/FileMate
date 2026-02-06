@@ -6,7 +6,7 @@ from filemate.file_system_node import FileSystemNode
 from filemate.file_type import FileType
 from filemate.file_type_extensions import FileTypeExtensions
 
-@dataclass
+@dataclass(eq=False)
 class File(FileSystemNode):
     
     """A class to represent a file."""

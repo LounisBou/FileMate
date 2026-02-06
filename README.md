@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 3. Install additional required packages:
 ```bash
-pip install bigtree python-dotenv pymate
+pip install bigtree python-dotenv pydevmate
 ```
 
 4. Configure environment variables:

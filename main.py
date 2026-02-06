@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from pymate import LogIt
+from pydevmate import LogIt
 
 from commandlinehelper import parse_args, check_args, set_default_args_values
 from filemate.file_system_node_factory import FileSystemNodeFactory

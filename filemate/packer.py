@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from dataclasses import dataclass, field
-from pymate import LogIt
+from pydevmate import LogIt
 
 from dotenv import load_dotenv
 from filemate.file_system_node_tree import FileSystemNodeTree
